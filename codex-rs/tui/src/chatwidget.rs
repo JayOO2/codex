@@ -67,6 +67,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::account::PlanType;
 use codex_protocol::approvals::ElicitationRequestEvent;
 use codex_protocol::parse_command::ParsedCommand;
+use codex_protocol::user_input::TextElement;
 use codex_protocol::user_input::UserInput;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -377,6 +378,7 @@ pub(crate) struct ChatWidget {
 struct UserMessage {
     text: String,
     image_paths: Vec<PathBuf>,
+    text_elements: Vec<TextElement>,
 }
 
 impl From<String> for UserMessage {
@@ -384,6 +386,8 @@ impl From<String> for UserMessage {
         Self {
             text,
             image_paths: Vec::new(),
+            // Plain text conversion has no UI element ranges.
+            text_elements: Vec::new(),
         }
     }
 }
@@ -393,15 +397,25 @@ impl From<&str> for UserMessage {
         Self {
             text: text.to_string(),
             image_paths: Vec::new(),
+            // Plain text conversion has no UI element ranges.
+            text_elements: Vec::new(),
         }
     }
 }
 
-fn create_initial_user_message(text: String, image_paths: Vec<PathBuf>) -> Option<UserMessage> {
+fn create_initial_user_message(
+    text: String,
+    image_paths: Vec<PathBuf>,
+    text_elements: Vec<TextElement>,
+) -> Option<UserMessage> {
     if text.is_empty() && image_paths.is_empty() {
         None
     } else {
-        Some(UserMessage { text, image_paths })
+        Some(UserMessage {
+            text,
+            image_paths,
+            text_elements,
+        })
     }
 }
 
@@ -1448,6 +1462,7 @@ impl ChatWidget {
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
                 initial_images,
+                Vec::new(),
             ),
             token_info: None,
             rate_limit_snapshot: None,
@@ -1534,6 +1549,7 @@ impl ChatWidget {
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
                 initial_images,
+                Vec::new(),
             ),
             token_info: None,
             rate_limit_snapshot: None,
@@ -1632,11 +1648,15 @@ impl ChatWidget {
             }
             _ => {
                 match self.bottom_pane.handle_key_event(key_event) {
-                    InputResult::Submitted(text) => {
+                    InputResult::Submitted {
+                        text,
+                        text_elements,
+                    } => {
                         // If a task is running, queue the user input to be sent after the turn completes.
                         let user_message = UserMessage {
                             text,
                             image_paths: self.bottom_pane.take_recent_submission_images(),
+                            text_elements,
                         };
                         self.queue_user_message(user_message);
                     }
@@ -1982,7 +2002,11 @@ impl ChatWidget {
     }
 
     fn submit_user_message(&mut self, user_message: UserMessage) {
-        let UserMessage { text, image_paths } = user_message;
+        let UserMessage {
+            text,
+            image_paths,
+            text_elements,
+        } = user_message;
         if text.is_empty() && image_paths.is_empty() {
             return;
         }
@@ -2012,7 +2036,10 @@ impl ChatWidget {
         }
 
         if !text.is_empty() {
-            items.push(UserInput::Text { text: text.clone() });
+            items.push(UserInput::Text {
+                text: text.clone(),
+                text_elements: text_elements.clone(),
+            });
         }
 
         if let Some(skills) = self.bottom_pane.skills() {
@@ -2045,7 +2072,7 @@ impl ChatWidget {
 
         // Only show the text portion in conversation history.
         if !text.is_empty() {
-            self.add_to_history(history_cell::new_user_prompt(text));
+            self.add_to_history(history_cell::new_user_prompt(text, text_elements));
         }
         self.needs_final_message_separator = false;
     }
@@ -2245,9 +2272,11 @@ impl ChatWidget {
     }
 
     fn on_user_message_event(&mut self, event: UserMessageEvent) {
-        let message = event.message.trim();
-        if !message.is_empty() {
-            self.add_to_history(history_cell::new_user_prompt(message.to_string()));
+        if !event.message.trim().is_empty() {
+            self.add_to_history(history_cell::new_user_prompt(
+                event.message,
+                event.text_elements,
+            ));
         }
     }
 

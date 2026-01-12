@@ -330,7 +330,7 @@ impl OtelManager {
         let prompt = items
             .iter()
             .flat_map(|item| match item {
-                UserInput::Text { text } => Some(text.as_str()),
+                UserInput::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<String>();
