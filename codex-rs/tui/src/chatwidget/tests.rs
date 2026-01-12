@@ -1114,8 +1114,8 @@ async fn ctrl_c_cleared_prompt_is_recoverable_via_history() {
 
     chat.bottom_pane.insert_str("draft message ");
     chat.bottom_pane
-        .attach_image(PathBuf::from("/tmp/preview.png"), 24, 42, "png");
-    let placeholder = "[preview.png 24x42]";
+        .attach_image(PathBuf::from("/tmp/preview.png"));
+    let placeholder = "[Image #1]";
     assert!(
         chat.bottom_pane.composer_text().ends_with(placeholder),
         "expected placeholder {placeholder:?} in composer text"
@@ -1474,6 +1474,15 @@ async fn slash_resume_opens_picker() {
     chat.dispatch_command(SlashCommand::Resume);
 
     assert_matches!(rx.try_recv(), Ok(AppEvent::OpenResumePicker));
+}
+
+#[tokio::test]
+async fn slash_fork_opens_picker() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+
+    chat.dispatch_command(SlashCommand::Fork);
+
+    assert_matches!(rx.try_recv(), Ok(AppEvent::OpenForkPicker));
 }
 
 #[tokio::test]
